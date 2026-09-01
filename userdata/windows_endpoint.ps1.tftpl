@@ -1,0 +1,138 @@
+<powershell>
+# FP Lab Windows endpoint bootstrap
+# Runs once at first launch via EC2 user data
+
+$ErrorActionPreference = "Stop"
+
+# ---- Variables from Terraform ----
+$TailscaleAuthKey = "${tailscale_auth_key}"
+$Hostname         = "${hostname}"
+$Profile          = "${profile}"
+$SplunkHecToken   = "${splunk_hec_token}"
+
+$SysmonUrl        = "https://download.sysinternals.com/files/Sysmon.zip"
+
+$SplunkUFVersion  = "10.4.3"
+$SplunkUFBuild    = "4174a2deda5d"
+$SplunkUFUrl      = "https://download.splunk.com/products/universalforwarder/releases/$SplunkUFVersion/windows/splunkforwarder-$SplunkUFVersion-$SplunkUFBuild-x64-release.msi"
+
+$TempDir = "C:\fp-lab-setup"
+New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
+
+# ---- Rename computer ----
+Rename-Computer -NewName $Hostname -Force
+
+# ---- Tailscale ----
+$TsInstaller = "$TempDir\tailscale-setup.exe"
+Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" `
+    -OutFile $TsInstaller -UseBasicParsing
+Start-Process -FilePath $TsInstaller -ArgumentList "/S" -Wait
+Start-Sleep -Seconds 10
+& "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$TailscaleAuthKey" --hostname="$Hostname" --accept-routes
+
+# ---- Sysmon ----
+$SysmonZip = "$TempDir\Sysmon.zip"
+Invoke-WebRequest -Uri $SysmonUrl -OutFile $SysmonZip -UseBasicParsing
+
+$SysmonDir = "$TempDir\Sysmon"
+Expand-Archive -Path $SysmonZip -DestinationPath $SysmonDir -Force
+
+# Download sysmon-modular merged config from S3 corpus bucket (instance IAM role)
+$SysmonConfigPath = "$TempDir\sysmon-config.xml"
+$BucketName = "fp-lab-corpora-${account_suffix}"
+$S3ConfigKey = "config/sysmon-config.xml"
+$AwsRegion  = "us-east-1"
+$MetadataTokenUri = "http://169.254.169.254/latest/api/token"
+$MetadataToken = (Invoke-RestMethod -Method PUT -Uri $MetadataTokenUri `
+    -Headers @{"X-aws-ec2-metadata-token-ttl-seconds"="21600"})
+$IdentityDoc = Invoke-RestMethod `
+    -Uri "http://169.254.169.254/latest/dynamic/instance-identity/document" `
+    -Headers @{"X-aws-ec2-metadata-token"=$MetadataToken}
+$CredentialRole = (Invoke-RestMethod `
+    -Uri "http://169.254.169.254/latest/meta-data/iam/security-credentials/" `
+    -Headers @{"X-aws-ec2-metadata-token"=$MetadataToken})
+$Creds = Invoke-RestMethod `
+    -Uri "http://169.254.169.254/latest/meta-data/iam/security-credentials/$CredentialRole" `
+    -Headers @{"X-aws-ec2-metadata-token"=$MetadataToken}
+
+$Env:AWS_ACCESS_KEY_ID     = $Creds.AccessKeyId
+$Env:AWS_SECRET_ACCESS_KEY = $Creds.SecretAccessKey
+$Env:AWS_SESSION_TOKEN     = $Creds.Token
+
+# Install AWS CLI for S3 download
+$AwsCliMsi = "$TempDir\AWSCLIV2.msi"
+Invoke-WebRequest -Uri "https://awscli.amazonaws.com/AWSCLIV2.msi" `
+    -OutFile $AwsCliMsi -UseBasicParsing
+Start-Process msiexec.exe -ArgumentList "/i `"$AwsCliMsi`" /qn" -Wait
+$Env:PATH += ";C:\Program Files\Amazon\AWSCLIV2"
+
+aws s3 cp "s3://$BucketName/$S3ConfigKey" $SysmonConfigPath --region $AwsRegion
+
+& "$SysmonDir\Sysmon64.exe" -accepteula -i $SysmonConfigPath
+
+# ---- Splunk Universal Forwarder ----
+$SplunkUFMsi = "$TempDir\splunkforwarder.msi"
+Invoke-WebRequest -Uri $SplunkUFUrl -OutFile $SplunkUFMsi -UseBasicParsing
+
+Start-Process msiexec.exe -Wait -ArgumentList @(
+    "/i", "`"$SplunkUFMsi`"",
+    "/qn",
+    "AGREETOLICENSE=Yes",
+    "LAUNCHSPLUNK=0"
+)
+
+$UFHome = "C:\Program Files\SplunkUniversalForwarder"
+
+# Persistent disk queue so events survive indexer downtime
+@"
+[tcpout]
+defaultGroup = fp_splunk_indexer
+persistentQueueSize = 512MB
+
+[tcpout:fp_splunk_indexer]
+server = fp-splunk:9997
+compressed = true
+"@ | Set-Content "$UFHome\etc\system\local\outputs.conf"
+
+# Monitor Sysmon WinEventLog channel
+@"
+[WinEventLog://Microsoft-Windows-Sysmon/Operational]
+disabled = 0
+index = fp_lab_wineventlog
+renderXml = false
+"@ | Set-Content "$UFHome\etc\system\local\inputs.conf"
+
+& "$UFHome\bin\splunk.exe" start --accept-license --answer-yes --no-prompt
+& "$UFHome\bin\splunk.exe" enable boot-start
+
+# ---- GHOSTS standalone client ----
+$GhostsDir = "C:\GHOSTS"
+New-Item -ItemType Directory -Force -Path $GhostsDir | Out-Null
+
+# Download GHOSTS client from GitHub releases (update tag as needed)
+$GhostsTag     = "v8.2.0"
+$GhostsZipUrl  = "https://github.com/cmu-sei/GHOSTS/releases/download/$GhostsTag/ghosts-client-windows-$GhostsTag.zip"
+$GhostsZip     = "$TempDir\ghosts-client.zip"
+Invoke-WebRequest -Uri $GhostsZipUrl -OutFile $GhostsZip -UseBasicParsing
+Expand-Archive -Path $GhostsZip -DestinationPath $GhostsDir -Force
+
+# Copy timeline from S3 (uploaded by Terraform from files/ghosts-timeline.json)
+$TimelineDest = "$GhostsDir\config\timeline.json"
+New-Item -ItemType Directory -Force -Path "$GhostsDir\config" | Out-Null
+aws s3 cp "s3://$BucketName/config/ghosts-timeline-$Profile.json" $TimelineDest --region $AwsRegion
+
+# Register GHOSTS as a scheduled task that runs at startup
+$Action  = New-ScheduledTaskAction -Execute "$GhostsDir\ghosts.exe"
+$Trigger = New-ScheduledTaskTrigger -AtStartup
+$Settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5)
+Register-ScheduledTask -TaskName "GHOSTS" -Action $Action -Trigger $Trigger `
+    -RunLevel Highest -Settings $Settings -Force
+
+Start-ScheduledTask -TaskName "GHOSTS"
+
+# ---- Cleanup ----
+Remove-Item -Recurse -Force $TempDir
+
+# Reboot to apply hostname change
+Restart-Computer -Force
+</powershell>

@@ -1,0 +1,162 @@
+{
+  "Status": "Run",
+  "TimeLineHandlers": [
+    {
+      "HandlerType": "BrowserChrome",
+      "Initial": "about:blank",
+      "UtcTimeOn": "12:45:00",
+      "UtcTimeOff": "01:15:00",
+      "HandlerArgs": {
+        "isheadless": "true",
+        "blockimages": "false"
+      },
+      "TimeLine": [
+        {
+          "TimeLineLabel": "browse-news",
+          "DelayAfter": 45000,
+          "DelayJitter": 20000,
+          "Command": "browse",
+          "CommandArgs": [
+            "https://www.reuters.com",
+            "https://www.bbc.com/news",
+            "https://apnews.com",
+            "https://www.npr.org",
+            "https://www.theguardian.com"
+          ]
+        },
+        {
+          "TimeLineLabel": "browse-reference",
+          "DelayAfter": 60000,
+          "DelayJitter": 30000,
+          "Command": "browse",
+          "CommandArgs": [
+            "https://www.wikipedia.org",
+            "https://stackoverflow.com",
+            "https://learn.microsoft.com",
+            "https://docs.python.org"
+          ]
+        },
+        {
+          "TimeLineLabel": "browse-search",
+          "DelayAfter": 30000,
+          "DelayJitter": 15000,
+          "Command": "browse",
+          "CommandArgs": [
+            "https://www.google.com/search?q=quarterly+report+template",
+            "https://www.google.com/search?q=windows+server+2022+best+practices",
+            "https://www.google.com/search?q=splunk+spl+examples"
+          ]
+        }
+      ]
+    },
+    {
+      "HandlerType": "Word",
+      "Initial": "",
+      "UtcTimeOn": "12:45:00",
+      "UtcTimeOff": "01:15:00",
+      "HandlerArgs": {},
+      "TimeLine": [
+        {
+          "TimeLineLabel": "create-doc",
+          "DelayAfter": 180000,
+          "DelayJitter": 60000,
+          "Command": "create",
+          "CommandArgs": [
+            "C:\\Users\\Administrator\\Documents\\quarterly_notes.docx",
+            "C:\\Users\\Administrator\\Documents\\meeting_agenda.docx",
+            "C:\\Users\\Administrator\\Documents\\status_update.docx"
+          ]
+        }
+      ]
+    },
+    {
+      "HandlerType": "Excel",
+      "Initial": "",
+      "UtcTimeOn": "12:45:00",
+      "UtcTimeOff": "01:15:00",
+      "HandlerArgs": {},
+      "TimeLine": [
+        {
+          "TimeLineLabel": "create-spreadsheet",
+          "DelayAfter": 240000,
+          "DelayJitter": 90000,
+          "Command": "create",
+          "CommandArgs": [
+            "C:\\Users\\Administrator\\Documents\\budget_tracker.xlsx",
+            "C:\\Users\\Administrator\\Documents\\inventory_list.xlsx"
+          ]
+        }
+      ]
+    },
+    {
+      "HandlerType": "Cmd",
+      "Initial": "",
+      "UtcTimeOn": "12:45:00",
+      "UtcTimeOff": "01:15:00",
+      "HandlerArgs": {},
+      "TimeLine": [
+        {
+          "TimeLineLabel": "benign-cmd",
+          "DelayAfter": 300000,
+          "DelayJitter": 120000,
+          "Command": "random",
+          "CommandArgs": [
+            "ipconfig /all",
+            "whoami /groups",
+            "net user",
+            "tasklist",
+            "dir C:\\Users\\Administrator\\Documents",
+            "systeminfo",
+            "ping -n 4 8.8.8.8",
+            "nslookup google.com"
+          ]
+        }
+      ]
+    },
+    {
+      "HandlerType": "PowerShell",
+      "Initial": "",
+      "UtcTimeOn": "12:45:00",
+      "UtcTimeOff": "01:15:00",
+      "HandlerArgs": {},
+      "TimeLine": [
+        {
+          "TimeLineLabel": "benign-ps",
+          "DelayAfter": 360000,
+          "DelayJitter": 120000,
+          "Command": "random",
+          "CommandArgs": [
+            "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10",
+            "Get-EventLog -LogName System -Newest 20",
+            "Get-ChildItem C:\\Users\\Administrator\\Documents",
+            "Get-NetIPConfiguration",
+            "Get-Service | Where-Object Status -eq Running"
+          ]
+        }
+      ]
+    },
+    {
+      "HandlerType": "FileOperation",
+      "Initial": "",
+      "UtcTimeOn": "12:45:00",
+      "UtcTimeOff": "01:15:00",
+      "HandlerArgs": {
+        "basepath": "C:\\Users\\Administrator\\Documents"
+      },
+      "TimeLine": [
+        {
+          "TimeLineLabel": "file-ops",
+          "DelayAfter": 120000,
+          "DelayJitter": 60000,
+          "Command": "random",
+          "CommandArgs": [
+            "create",
+            "copy",
+            "move",
+            "delete"
+          ]
+        }
+      ]
+    }
+  ]
+}

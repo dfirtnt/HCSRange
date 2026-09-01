@@ -1,0 +1,102 @@
+{
+  "Status": "Run",
+  "TimeLineHandlers": [
+    {
+      "HandlerType": "Cmd",
+      "Initial": "",
+      "UtcTimeOn": "12:45:00",
+      "UtcTimeOff": "01:15:00",
+      "HandlerArgs": {},
+      "TimeLine": [
+        {
+          "TimeLineLabel": "server-admin-cmd",
+          "DelayAfter": 180000,
+          "DelayJitter": 60000,
+          "Command": "random",
+          "CommandArgs": [
+            "net statistics server",
+            "net session",
+            "netstat -an",
+            "ipconfig /all",
+            "tasklist /svc",
+            "sc query type= all state= all",
+            "wevtutil qe System /c:10 /f:text",
+            "wevtutil qe Security /c:10 /f:text",
+            "dir C:\\Windows\\System32\\winevt\\Logs",
+            "systeminfo"
+          ]
+        }
+      ]
+    },
+    {
+      "HandlerType": "PowerShell",
+      "Initial": "",
+      "UtcTimeOn": "12:45:00",
+      "UtcTimeOff": "01:15:00",
+      "HandlerArgs": {},
+      "TimeLine": [
+        {
+          "TimeLineLabel": "server-admin-ps",
+          "DelayAfter": 240000,
+          "DelayJitter": 90000,
+          "Command": "random",
+          "CommandArgs": [
+            "Get-WinEvent -LogName Security -MaxEvents 25 | Format-List",
+            "Get-Service | Where-Object Status -eq Running | Sort-Object DisplayName",
+            "Get-Process | Sort-Object WorkingSet -Descending | Select-Object -First 15",
+            "Get-EventLog -LogName Application -Newest 15 -EntryType Error,Warning",
+            "Get-NetTCPConnection -State Established | Select-Object LocalPort,RemoteAddress",
+            "Get-ScheduledTask | Where-Object State -ne Disabled",
+            "Get-Disk | Select-Object Number,FriendlyName,Size,HealthStatus",
+            "Get-LocalGroupMember -Group Administrators"
+          ]
+        }
+      ]
+    },
+    {
+      "HandlerType": "FileOperation",
+      "Initial": "",
+      "UtcTimeOn": "12:45:00",
+      "UtcTimeOff": "01:15:00",
+      "HandlerArgs": {
+        "basepath": "C:\\ServerData\\Logs"
+      },
+      "TimeLine": [
+        {
+          "TimeLineLabel": "log-file-ops",
+          "DelayAfter": 300000,
+          "DelayJitter": 120000,
+          "Command": "random",
+          "CommandArgs": [
+            "create",
+            "copy",
+            "delete"
+          ]
+        }
+      ]
+    },
+    {
+      "HandlerType": "BrowserChrome",
+      "Initial": "about:blank",
+      "UtcTimeOn": "12:45:00",
+      "UtcTimeOff": "01:15:00",
+      "HandlerArgs": {
+        "isheadless": "true",
+        "blockimages": "true"
+      },
+      "TimeLine": [
+        {
+          "TimeLineLabel": "browse-docs",
+          "DelayAfter": 600000,
+          "DelayJitter": 180000,
+          "Command": "browse",
+          "CommandArgs": [
+            "https://learn.microsoft.com/en-us/windows-server",
+            "https://docs.splunk.com/Documentation/Splunk",
+            "https://www.cisecurity.org/benchmark/microsoft_windows_server"
+          ]
+        }
+      ]
+    }
+  ]
+}

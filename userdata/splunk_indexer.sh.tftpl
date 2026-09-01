@@ -1,0 +1,102 @@
+#!/bin/bash
+set -euo pipefail
+
+# ---- Variables from Terraform ----
+TAILSCALE_AUTH_KEY="${tailscale_auth_key}"
+SPLUNK_ADMIN_PASSWORD="${splunk_admin_password}"
+SPLUNK_HEC_TOKEN="${splunk_hec_token}"
+
+# ---- Splunk build to install ----
+# aarch64 is distributed as .tgz (no official .deb for ARM64).
+SPLUNK_VERSION="10.4.3"
+SPLUNK_BUILD="4174a2deda5d"
+SPLUNK_TGZ="splunk-$${SPLUNK_VERSION}-$${SPLUNK_BUILD}-Linux-armv8.tgz"
+SPLUNK_URL="https://download.splunk.com/products/splunk/releases/$${SPLUNK_VERSION}/linux/$${SPLUNK_TGZ}"
+
+export DEBIAN_FRONTEND=noninteractive
+
+# ---- System prep ----
+apt-get update -y
+apt-get install -y curl wget jq gnupg2 lsb-release
+
+# ---- Mount data volume (/dev/xvdf → /opt/splunk-data) ----
+DATA_DEV="/dev/xvdf"
+DATA_MOUNT="/opt/splunk-data"
+if ! blkid "$${DATA_DEV}" | grep -q ext4; then
+  mkfs.ext4 "$${DATA_DEV}"
+fi
+mkdir -p "$${DATA_MOUNT}"
+echo "$${DATA_DEV}  $${DATA_MOUNT}  ext4  defaults,nofail  0  2" >> /etc/fstab
+mount -a
+
+# ---- Tailscale ----
+curl -fsSL https://tailscale.com/install.sh | sh
+tailscale up --authkey="$${TAILSCALE_AUTH_KEY}" --hostname="fp-splunk" --accept-routes
+
+# ---- Download and verify Splunk ----
+cd /tmp
+wget -q -O "$${SPLUNK_TGZ}" "$${SPLUNK_URL}"
+tar -xzf "$${SPLUNK_TGZ}" -C /opt
+rm -f "$${SPLUNK_TGZ}"
+
+# ---- Configure Splunk ----
+SPLUNK_HOME="/opt/splunk"
+
+# Set SPLUNK_DB to the persistent data volume
+mkdir -p "$${DATA_MOUNT}/db" "$${DATA_MOUNT}/colddb" "$${DATA_MOUNT}/thaweddb"
+cat > "$${SPLUNK_HOME}/etc/system/local/server.conf" <<EOF
+[general]
+SPLUNK_DB = $${DATA_MOUNT}/db
+EOF
+
+# Admin credentials (non-interactive first run)
+cat > "$${SPLUNK_HOME}/etc/system/local/user-seed.conf" <<EOF
+[user_info]
+USERNAME = admin
+PASSWORD = $${SPLUNK_ADMIN_PASSWORD}
+EOF
+
+# Custom indexes
+cat > "$${SPLUNK_HOME}/etc/system/local/indexes.conf" <<EOF
+[fp_lab_wineventlog]
+homePath   = $${DATA_MOUNT}/db/fp_lab_wineventlog/db
+coldPath   = $${DATA_MOUNT}/colddb/fp_lab_wineventlog/colddb
+thawedPath = $${DATA_MOUNT}/thaweddb/fp_lab_wineventlog/thaweddb
+maxTotalDataSizeMB = 20480
+
+[fp_test]
+homePath   = $${DATA_MOUNT}/db/fp_test/db
+coldPath   = $${DATA_MOUNT}/colddb/fp_test/colddb
+thawedPath = $${DATA_MOUNT}/thaweddb/fp_test/thaweddb
+maxTotalDataSizeMB = 5120
+EOF
+
+# Enable UF receiving on 9997
+cat > "$${SPLUNK_HOME}/etc/system/local/inputs.conf" <<EOF
+[splunktcp://9997]
+connection_host = ip
+EOF
+
+# HEC configuration
+cat > "$${SPLUNK_HOME}/etc/apps/splunk_httpinput/local/inputs.conf" <<EOF
+[http]
+disabled = 0
+port = 8088
+token = $${SPLUNK_HEC_TOKEN}
+
+[http://fp_lab_hec]
+disabled = 0
+index = fp_lab_wineventlog
+token = $${SPLUNK_HEC_TOKEN}
+EOF
+
+# Bind all interfaces (SG enforces no-inbound; reachable only via tailnet)
+cat > "$${SPLUNK_HOME}/etc/system/local/web.conf" <<EOF
+[settings]
+httpport = 8000
+startwebserver = 1
+EOF
+
+# ---- Start Splunk ----
+"$${SPLUNK_HOME}/bin/splunk" start --accept-license --answer-yes --no-prompt
+"$${SPLUNK_HOME}/bin/splunk" enable boot-start -user root
