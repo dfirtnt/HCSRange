@@ -22,11 +22,12 @@ Budget alert fires at 50% and 75% of $200/mo.
 4. **tfvars** — create `terraform.auto.tfvars` (gitignored):
 
 ```hcl
-aws_profile           = "your-sso-profile"
-tailscale_auth_key    = "tskey-auth-..."
-splunk_admin_password = "ChangeMe123!"
-splunk_hec_token      = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-alert_email           = "you@example.com"
+aws_profile            = "your-sso-profile"
+tailscale_auth_key     = "tskey-auth-..."
+splunk_admin_password  = "ChangeMe123!"
+splunk_hec_token       = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+alert_email            = "you@example.com"
+windows_admin_password = "YourWindowsPassword!"
 ```
 
 5. **Splunk SHA512** — before applying, get the aarch64 .deb SHA512 from the [Splunk download page](https://www.splunk.com/en_us/download/splunk-enterprise.html) and update `SPLUNK_SHA512` in `userdata/splunk_indexer.sh.tftpl`.

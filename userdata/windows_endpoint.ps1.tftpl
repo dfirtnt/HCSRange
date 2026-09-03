@@ -5,10 +5,11 @@
 $ErrorActionPreference = "Stop"
 
 # ---- Variables from Terraform ----
-$TailscaleAuthKey = "${tailscale_auth_key}"
-$Hostname         = "${hostname}"
-$Profile          = "${profile}"
-$SplunkHecToken   = "${splunk_hec_token}"
+$TailscaleAuthKey    = "${tailscale_auth_key}"
+$Hostname            = "${hostname}"
+$Profile             = "${profile}"
+$SplunkHecToken      = "${splunk_hec_token}"
+$WindowsAdminPassword = "${windows_admin_password}"
 
 $SysmonUrl        = "https://download.sysinternals.com/files/Sysmon.zip"
 
@@ -22,13 +23,28 @@ New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
 # ---- Rename computer ----
 Rename-Computer -NewName $Hostname -Force
 
+# ---- Administrator password + RDP ----
+net user Administrator $WindowsAdminPassword
+Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
+    -Name fDenyTSConnections -Value 0
+Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
 # ---- Tailscale ----
 $TsInstaller = "$TempDir\tailscale-setup.exe"
 Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" `
     -OutFile $TsInstaller -UseBasicParsing
 Start-Process -FilePath $TsInstaller -ArgumentList "/S" -Wait
-Start-Sleep -Seconds 10
-& "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$TailscaleAuthKey" --hostname="$Hostname" --accept-routes
+
+# Wait for Tailscale service to be running (up to 60s)
+$TsSvc = $null
+for ($i = 0; $i -lt 12; $i++) {
+    $TsSvc = Get-Service -Name Tailscale -ErrorAction SilentlyContinue
+    if ($TsSvc -and $TsSvc.Status -eq "Running") { break }
+    Start-Sleep -Seconds 5
+}
+
+& "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$TailscaleAuthKey" --hostname="$Hostname" --accept-routes --unattended
+& "C:\Program Files\Tailscale\tailscale.exe" set --unattended=true
 
 # ---- Sysmon ----
 $SysmonZip = "$TempDir\Sysmon.zip"

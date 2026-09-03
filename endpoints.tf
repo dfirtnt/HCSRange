@@ -37,11 +37,12 @@ resource "aws_instance" "windows_endpoint" {
   }
 
   user_data = templatefile("${path.module}/userdata/windows_endpoint.ps1.tftpl", {
-    tailscale_auth_key = var.tailscale_auth_key
-    hostname           = each.key
-    profile            = each.value.profile
-    splunk_hec_token   = var.splunk_hec_token
-    account_suffix     = local.account_suffix
+    tailscale_auth_key     = var.tailscale_auth_key
+    hostname               = each.key
+    profile                = each.value.profile
+    splunk_hec_token       = var.splunk_hec_token
+    account_suffix         = local.account_suffix
+    windows_admin_password = var.windows_admin_password
   })
 
   user_data_replace_on_change = false

@@ -27,6 +27,12 @@ variable "splunk_hec_token" {
   description = "Splunk HEC token (operator-chosen UUID)."
 }
 
+variable "windows_admin_password" {
+  type        = string
+  sensitive   = true
+  description = "Password for the built-in Administrator account on Windows endpoints. Used for RDP access."
+}
+
 variable "alert_email" {
   type        = string
   description = "Email address for AWS Budgets cost alert notifications."
