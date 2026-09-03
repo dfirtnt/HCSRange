@@ -17,21 +17,45 @@ export DEBIAN_FRONTEND=noninteractive
 
 # ---- System prep ----
 apt-get update -y
-apt-get install -y curl wget jq gnupg2 lsb-release
+apt-get install -y curl wget jq gnupg2 lsb-release nvme-cli
 
-# ---- Mount data volume (/dev/xvdf → /opt/splunk-data) ----
-DATA_DEV="/dev/xvdf"
+# ---- Mount data volume (/opt/splunk-data) ----
+# Nitro instances (t4g) expose EBS as NVMe; find the data volume by excluding root
 DATA_MOUNT="/opt/splunk-data"
+ROOT_DEV=$(findmnt -n -o SOURCE /)
+ROOT_DISK=$(lsblk -no PKNAME "$${ROOT_DEV}" 2>/dev/null || basename "$${ROOT_DEV}" | sed 's/p[0-9]*$//')
+
+# Find the first block device that isn't the root disk
+DATA_DEV=""
+for dev in /dev/nvme[0-9]n1 /dev/xvd[f-z]; do
+  [ -b "$dev" ] || continue
+  dev_name=$(basename "$dev")
+  # Skip if this is the root disk
+  [[ "$dev_name" == "$ROOT_DISK"* ]] && continue
+  DATA_DEV="$dev"
+  break
+done
+
+if [ -z "$${DATA_DEV}" ]; then
+  echo "ERROR: Could not find data volume device" >&2
+  exit 1
+fi
+
+echo "Using data device: $${DATA_DEV}"
+
 if ! blkid "$${DATA_DEV}" | grep -q ext4; then
   mkfs.ext4 "$${DATA_DEV}"
 fi
 mkdir -p "$${DATA_MOUNT}"
-echo "$${DATA_DEV}  $${DATA_MOUNT}  ext4  defaults,nofail  0  2" >> /etc/fstab
+# Use UUID for fstab to survive device name changes
+DATA_UUID=$(blkid -s UUID -o value "$${DATA_DEV}")
+echo "UUID=$${DATA_UUID}  $${DATA_MOUNT}  ext4  defaults,nofail  0  2" >> /etc/fstab
 mount -a
 
 # ---- Tailscale ----
 curl -fsSL https://tailscale.com/install.sh | sh
-tailscale up --authkey="$${TAILSCALE_AUTH_KEY}" --hostname="fp-splunk" --accept-routes
+tailscale up --authkey="$${TAILSCALE_AUTH_KEY}" --hostname="fp-splunk" --accept-routes --unattended
+tailscale set --unattended=true
 
 # ---- Download and verify Splunk ----
 cd /tmp
