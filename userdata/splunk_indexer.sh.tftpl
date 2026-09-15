@@ -7,20 +7,25 @@ SPLUNK_ADMIN_PASSWORD="${splunk_admin_password}"
 SPLUNK_HEC_TOKEN="${splunk_hec_token}"
 
 # ---- Splunk build to install ----
-# aarch64 is distributed as .tgz (no official .deb for ARM64).
+# x86_64 tgz (Splunk Enterprise publishes no Linux ARM64 build; all -armv8
+# URLs on download.splunk.com return 404).
 SPLUNK_VERSION="10.4.3"
 SPLUNK_BUILD="4174a2deda5d"
-SPLUNK_TGZ="splunk-$${SPLUNK_VERSION}-$${SPLUNK_BUILD}-Linux-armv8.tgz"
+SPLUNK_TGZ="splunk-$${SPLUNK_VERSION}-$${SPLUNK_BUILD}-linux-amd64.tgz"
 SPLUNK_URL="https://download.splunk.com/products/splunk/releases/$${SPLUNK_VERSION}/linux/$${SPLUNK_TGZ}"
 
 export DEBIAN_FRONTEND=noninteractive
 
 # ---- System prep ----
+# apt mirrors occasionally 503 transiently (observed twice); retry so a
+# transient failure doesn't abort the whole bootstrap under `set -e`.
 apt-get update -y
-apt-get install -y curl wget jq gnupg2 lsb-release nvme-cli
+runcmd() { for i in 1 2 3 4 5; do "$@" && return 0; sleep 10; done; return 1; }
+runcmd apt-get install -y curl wget jq gnupg2 lsb-release nvme-cli
 
 # ---- Mount data volume (/opt/splunk-data) ----
-# Nitro instances (t4g) expose EBS as NVMe; find the data volume by excluding root
+# Nitro instances (t4g) expose EBS as NVMe, Xen (t3) as /dev/xvd*; find the
+# data volume by excluding root.
 DATA_MOUNT="/opt/splunk-data"
 ROOT_DEV=$(findmnt -n -o SOURCE /)
 ROOT_DISK=$(lsblk -no PKNAME "$${ROOT_DEV}" 2>/dev/null || basename "$${ROOT_DEV}" | sed 's/p[0-9]*$//')
@@ -53,9 +58,20 @@ echo "UUID=$${DATA_UUID}  $${DATA_MOUNT}  ext4  defaults,nofail  0  2" >> /etc/f
 mount -a
 
 # ---- Tailscale ----
+# `--unattended` is NOT supported by the distro 'tailscale up' / 'set'
+# (verified on 1.102.3; the flag exists and fails). Session state is stored
+# in /var/lib/tailscale, so the node reconnects on reboot without it.
+# Retry `up` a few times: right after install.sh, tailscaled can race and the
+# first attempt occasionally errors.
+# Unique hostname (fp-splunk-<instance-id-suffix>) so a fresh instance never
+# collides with stale tailnet nodes left behind by previous deploys.
 curl -fsSL https://tailscale.com/install.sh | sh
-tailscale up --authkey="$${TAILSCALE_AUTH_KEY}" --hostname="fp-splunk" --accept-routes --unattended
-tailscale set --unattended=true
+IMDS_TOKEN=$(curl -fsSL -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" http://169.254.169.254/latest/api/token)
+INSTANCE_ID=$(curl -fsSL -H "X-aws-ec2-metadata-token: $${IMDS_TOKEN}" http://169.254.169.254/latest/meta-data/instance-id)
+HOST_SUFFIX=$(printf '%s' "$${INSTANCE_ID}" | cut -c3-8)
+TAILNET_HOSTNAME="fp-splunk-$${HOST_SUFFIX}"
+up() { tailscale up --authkey="$${TAILSCALE_AUTH_KEY}" --hostname="$${TAILNET_HOSTNAME}" --accept-routes; }
+for i in 1 2 3 4 5; do up && break; sleep 5; done
 
 # ---- Download and verify Splunk ----
 cd /tmp
@@ -101,11 +117,14 @@ cat > "$${SPLUNK_HOME}/etc/system/local/inputs.conf" <<EOF
 connection_host = ip
 EOF
 
-# HEC configuration
+# HEC configuration (splunk_httpinput app local/ doesn't exist until first start).
+# enableSSL=0 so plaintext HTTP over 8088 works across the encrypted tailnet.
+mkdir -p "$${SPLUNK_HOME}/etc/apps/splunk_httpinput/local"
 cat > "$${SPLUNK_HOME}/etc/apps/splunk_httpinput/local/inputs.conf" <<EOF
 [http]
 disabled = 0
 port = 8088
+enableSSL = 0
 token = $${SPLUNK_HEC_TOKEN}
 
 [http://fp_lab_hec]

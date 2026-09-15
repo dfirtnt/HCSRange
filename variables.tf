@@ -46,8 +46,8 @@ variable "endpoint_instance_type" {
 
 variable "indexer_instance_type" {
   type        = string
-  default     = "t4g.large"
-  description = "Instance type for the Splunk indexer (Graviton; Splunk ships aarch64 Linux builds)."
+  default     = "t3.large"
+  description = "Instance type for the Splunk indexer. Must be x86_64 (Splunk Enterprise has no Linux ARM64 build; t4g Graviton cannot install it)."
 }
 
 variable "endpoints_use_spot" {

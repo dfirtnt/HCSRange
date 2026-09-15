@@ -12,12 +12,12 @@ AWS telemetry factory: Splunk indexer + 2 Windows endpoints generating benign Sy
 | S3 + data transfer + EventBridge | ~$5 |
 | **Total** | **~$65/mo** |
 
-Budget alert fires at 50% and 75% of $200/mo.
+Budget alert fires at 50% and 75% of $150/mo (hard ceiling).
 
 ## Prerequisites
 
 1. **AWS credentials** — `aws configure sso`, note the profile name.
-2. **Tailscale** — create tag `tag:fp-lab` in admin console ACLs; mint a reusable auth key scoped to it (90-day).
+2. **Tailscale** — create tag `tag:fp-lab` in admin console ACLs; add `"autoApprovers": {"registers": ["tag:fp-lab"]}` to the policy so tagged nodes self-approve (avoids per-rebuild console approval); mint a reusable auth key scoped to that tag (90-day).
 3. **Splunk** — choose an admin password and a HEC token (any UUID).
 4. **tfvars** — create `terraform.auto.tfvars` (gitignored):
 
@@ -55,11 +55,11 @@ Apply takes ~5 min. Instances finish bootstrapping 10–15 min after apply compl
 ## Verify
 
 ```bash
-# All three nodes appear in tailnet
-tailscale status | grep -E "fp-splunk|fp-wkstn|fp-srv"
+# Tailnet hostnames are suffixed with the instance ID; resolve them from terraform
+tailscale status | grep -E "fp-splunk-|fp-wkstn-01-|fp-srv-01-"
 
 # SplunkWeb reachable over tailnet
-curl -sk https://fp-splunk:8089/services/server/info -u admin:YOUR_PASSWORD | jq .
+curl -k https://$(terraform output -raw splunk_rest_url | sed 's#https://##')/services/server/info -u admin:YOUR_PASSWORD | jq .
 
 # Sysmon events flowing (run ~30 min after endpoint boot)
 # In Splunk: index=fp_lab_wineventlog EventCode=1 | head 10

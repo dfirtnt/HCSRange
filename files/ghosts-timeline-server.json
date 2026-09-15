@@ -2,16 +2,19 @@
   "Status": "Run",
   "TimeLineHandlers": [
     {
-      "HandlerType": "Cmd",
+      "HandlerType": "Command",
       "Initial": "",
       "UtcTimeOn": "12:45:00",
       "UtcTimeOff": "01:15:00",
+      "Loop": false,
       "HandlerArgs": {},
-      "TimeLine": [
+      "TimeLineEvents": [
         {
-          "TimeLineLabel": "server-admin-cmd",
-          "DelayAfter": 180000,
-          "DelayJitter": 60000,
+          "DelayAfter": {
+            "random": true,
+            "min": 180000,
+            "max": 240000
+          },
           "Command": "random",
           "CommandArgs": [
             "net statistics server",
@@ -33,12 +36,15 @@
       "Initial": "",
       "UtcTimeOn": "12:45:00",
       "UtcTimeOff": "01:15:00",
+      "Loop": false,
       "HandlerArgs": {},
-      "TimeLine": [
+      "TimeLineEvents": [
         {
-          "TimeLineLabel": "server-admin-ps",
-          "DelayAfter": 240000,
-          "DelayJitter": 90000,
+          "DelayAfter": {
+            "random": true,
+            "min": 240000,
+            "max": 330000
+          },
           "Command": "random",
           "CommandArgs": [
             "Get-WinEvent -LogName Security -MaxEvents 25 | Format-List",
@@ -54,23 +60,29 @@
       ]
     },
     {
-      "HandlerType": "FileOperation",
+      "HandlerType": "Command",
       "Initial": "",
       "UtcTimeOn": "12:45:00",
       "UtcTimeOff": "01:15:00",
+      "Loop": false,
       "HandlerArgs": {
-        "basepath": "C:\\ServerData\\Logs"
+        "execution-probability": "100"
       },
-      "TimeLine": [
+      "TimeLineEvents": [
         {
-          "TimeLineLabel": "log-file-ops",
-          "DelayAfter": 300000,
-          "DelayJitter": 120000,
+          "DelayAfter": {
+            "random": true,
+            "min": 300000,
+            "max": 420000
+          },
           "Command": "random",
           "CommandArgs": [
-            "create",
-            "copy",
-            "delete"
+            "mkdir C:\\ServerData\\Logs",
+            "type NUL> C:\\ServerData\\Logs\\healthcheck.dat",
+            "attrib R C:\\ServerData\\Logs\\healthcheck.dat",
+            "copy C:\\ServerData\\Logs\\healthcheck.dat C:\\ServerData\\Logs\\healthcheck.dat.bak",
+            "del C:\\ServerData\\Logs\\healthcheck.dat.bak",
+            "dir C:\\ServerData\\Logs"
           ]
         }
       ]
@@ -80,15 +92,18 @@
       "Initial": "about:blank",
       "UtcTimeOn": "12:45:00",
       "UtcTimeOff": "01:15:00",
+      "Loop": false,
       "HandlerArgs": {
         "isheadless": "true",
         "blockimages": "true"
       },
-      "TimeLine": [
+      "TimeLineEvents": [
         {
-          "TimeLineLabel": "browse-docs",
-          "DelayAfter": 600000,
-          "DelayJitter": 180000,
+          "DelayAfter": {
+            "random": true,
+            "min": 600000,
+            "max": 780000
+          },
           "Command": "browse",
           "CommandArgs": [
             "https://learn.microsoft.com/en-us/windows-server",

@@ -6,15 +6,18 @@
       "Initial": "about:blank",
       "UtcTimeOn": "12:45:00",
       "UtcTimeOff": "01:15:00",
+      "Loop": false,
       "HandlerArgs": {
         "isheadless": "true",
         "blockimages": "false"
       },
-      "TimeLine": [
+      "TimeLineEvents": [
         {
-          "TimeLineLabel": "browse-news",
-          "DelayAfter": 45000,
-          "DelayJitter": 20000,
+          "DelayAfter": {
+            "random": true,
+            "min": 45000,
+            "max": 65000
+          },
           "Command": "browse",
           "CommandArgs": [
             "https://www.reuters.com",
@@ -25,9 +28,11 @@
           ]
         },
         {
-          "TimeLineLabel": "browse-reference",
-          "DelayAfter": 60000,
-          "DelayJitter": 30000,
+          "DelayAfter": {
+            "random": true,
+            "min": 60000,
+            "max": 90000
+          },
           "Command": "browse",
           "CommandArgs": [
             "https://www.wikipedia.org",
@@ -37,9 +42,11 @@
           ]
         },
         {
-          "TimeLineLabel": "browse-search",
-          "DelayAfter": 30000,
-          "DelayJitter": 15000,
+          "DelayAfter": {
+            "random": true,
+            "min": 30000,
+            "max": 45000
+          },
           "Command": "browse",
           "CommandArgs": [
             "https://www.google.com/search?q=quarterly+report+template",
@@ -54,12 +61,15 @@
       "Initial": "",
       "UtcTimeOn": "12:45:00",
       "UtcTimeOff": "01:15:00",
+      "Loop": false,
       "HandlerArgs": {},
-      "TimeLine": [
+      "TimeLineEvents": [
         {
-          "TimeLineLabel": "create-doc",
-          "DelayAfter": 180000,
-          "DelayJitter": 60000,
+          "DelayAfter": {
+            "random": true,
+            "min": 180000,
+            "max": 240000
+          },
           "Command": "create",
           "CommandArgs": [
             "C:\\Users\\Administrator\\Documents\\quarterly_notes.docx",
@@ -74,12 +84,15 @@
       "Initial": "",
       "UtcTimeOn": "12:45:00",
       "UtcTimeOff": "01:15:00",
+      "Loop": false,
       "HandlerArgs": {},
-      "TimeLine": [
+      "TimeLineEvents": [
         {
-          "TimeLineLabel": "create-spreadsheet",
-          "DelayAfter": 240000,
-          "DelayJitter": 90000,
+          "DelayAfter": {
+            "random": true,
+            "min": 240000,
+            "max": 330000
+          },
           "Command": "create",
           "CommandArgs": [
             "C:\\Users\\Administrator\\Documents\\budget_tracker.xlsx",
@@ -89,16 +102,19 @@
       ]
     },
     {
-      "HandlerType": "Cmd",
+      "HandlerType": "Command",
       "Initial": "",
       "UtcTimeOn": "12:45:00",
       "UtcTimeOff": "01:15:00",
+      "Loop": false,
       "HandlerArgs": {},
-      "TimeLine": [
+      "TimeLineEvents": [
         {
-          "TimeLineLabel": "benign-cmd",
-          "DelayAfter": 300000,
-          "DelayJitter": 120000,
+          "DelayAfter": {
+            "random": true,
+            "min": 300000,
+            "max": 420000
+          },
           "Command": "random",
           "CommandArgs": [
             "ipconfig /all",
@@ -118,12 +134,15 @@
       "Initial": "",
       "UtcTimeOn": "12:45:00",
       "UtcTimeOff": "01:15:00",
+      "Loop": false,
       "HandlerArgs": {},
-      "TimeLine": [
+      "TimeLineEvents": [
         {
-          "TimeLineLabel": "benign-ps",
-          "DelayAfter": 360000,
-          "DelayJitter": 120000,
+          "DelayAfter": {
+            "random": true,
+            "min": 360000,
+            "max": 480000
+          },
           "Command": "random",
           "CommandArgs": [
             "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10",
@@ -136,24 +155,29 @@
       ]
     },
     {
-      "HandlerType": "FileOperation",
+      "HandlerType": "Command",
       "Initial": "",
       "UtcTimeOn": "12:45:00",
       "UtcTimeOff": "01:15:00",
+      "Loop": false,
       "HandlerArgs": {
-        "basepath": "C:\\Users\\Administrator\\Documents"
+        "execution-probability": "100"
       },
-      "TimeLine": [
+      "TimeLineEvents": [
         {
-          "TimeLineLabel": "file-ops",
-          "DelayAfter": 120000,
-          "DelayJitter": 60000,
+          "DelayAfter": {
+            "random": true,
+            "min": 120000,
+            "max": 180000
+          },
           "Command": "random",
           "CommandArgs": [
-            "create",
-            "copy",
-            "move",
-            "delete"
+            "type NUL> C:\\Users\\Administrator\\Documents\\scratch.txt",
+            "copy C:\\Users\\Administrator\\Documents\\scratch.txt C:\\Users\\Administrator\\Documents\\scratch.bak",
+            "move C:\\Users\\Administrator\\Documents\\scratch.bak C:\\Users\\Administrator\\Documents\\scratch.log",
+            "del C:\\Users\\Administrator\\Documents\\scratch.log",
+            "del C:\\Users\\Administrator\\Documents\\scratch.txt",
+            "dir C:\\Users\\Administrator\\Documents"
           ]
         }
       ]

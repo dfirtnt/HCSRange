@@ -3,6 +3,7 @@
 # Runs once at first launch via EC2 user data
 
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
 
 # ---- Variables from Terraform ----
 $TailscaleAuthKey    = "${tailscale_auth_key}"
@@ -15,10 +16,28 @@ $SysmonUrl        = "https://download.sysinternals.com/files/Sysmon.zip"
 
 $SplunkUFVersion  = "10.4.3"
 $SplunkUFBuild    = "4174a2deda5d"
-$SplunkUFUrl      = "https://download.splunk.com/products/universalforwarder/releases/$SplunkUFVersion/windows/splunkforwarder-$SplunkUFVersion-$SplunkUFBuild-x64-release.msi"
+$SplunkUFUrl      = "https://download.splunk.com/products/universalforwarder/releases/$SplunkUFVersion/windows/splunkforwarder-$SplunkUFVersion-$SplunkUFBuild-windows-x64.msi"
+
+$GhostsTag      = "v9.0.0"
+$GhostsZipUrl   = "https://github.com/cmu-sei/GHOSTS/releases/download/$GhostsTag/ghosts-client-windows-x64.zip"
+$GhostsDir      = "C:\GHOSTS"
+$GhostsExe      = "$GhostsDir\x64\ghosts.exe"
+$GhostsTimeline = "$GhostsDir\x64\config\timeline.json"
 
 $TempDir = "C:\fp-lab-setup"
 New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
+
+# ---- Instance ID (IMDSv2) and unique tailnet hostname ----
+# Rehydration-friendly: the '-<id>' suffix means a fresh instance never
+# collides with stale tailnet nodes left behind by previous deploys.
+$MetadataTokenUri = "http://169.254.169.254/latest/api/token"
+$MetadataToken = (Invoke-RestMethod -Method PUT -Uri $MetadataTokenUri `
+    -Headers @{"X-aws-ec2-metadata-token-ttl-seconds"="21600"})
+$InstanceId = (Invoke-RestMethod `
+    -Uri "http://169.254.169.254/latest/meta-data/instance-id" `
+    -Headers @{"X-aws-ec2-metadata-token"=$MetadataToken})
+$IdSuffix = $InstanceId.Substring(2, [Math]::Min(6, $InstanceId.Length - 2))
+$TailnetHostname = "${hostname}-$IdSuffix"
 
 # ---- Rename computer ----
 Rename-Computer -NewName $Hostname -Force
@@ -43,8 +62,29 @@ for ($i = 0; $i -lt 12; $i++) {
     Start-Sleep -Seconds 5
 }
 
-& "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$TailscaleAuthKey" --hostname="$Hostname" --accept-routes --unattended
+& "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$TailscaleAuthKey" --hostname="$TailnetHostname" --accept-routes --unattended
 & "C:\Program Files\Tailscale\tailscale.exe" set --unattended=true
+
+# ---- Locate the live Splunk indexer over the tailnet ----
+# We collect the indexer's tailnet IP from `tailscale status --json` rather
+# than hardcoding a hostname: the indexer's name is suffixed with its instance
+# ID, and stale offline nodes from prior deploys must not shadow the live one.
+# Picks the first ONLINE peer whose base hostname starts with 'fp-splunk-'.
+function Get-IndexerTailnetIp {
+    for ($attempt = 0; $attempt -lt 60; $attempt++) {
+        try {
+            $status = & "C:\Program Files\Tailscale\tailscale.exe" status --json 2>$null | ConvertFrom-Json
+            $peer = $status.Peer | Where-Object { $_.HostName -like "fp-splunk-*" -and $_.Online -eq $true } | Select-Object -First 1
+            if ($peer -and $peer.TailscaleIPs -and $peer.TailscaleIPs[0]) {
+                return $peer.TailscaleIPs[0].ToString()
+            }
+        } catch {
+            # tailscaled may still be starting; ignore and retry
+        }
+        Start-Sleep -Seconds 20
+    }
+    return $null
+}
 
 # ---- Sysmon ----
 $SysmonZip = "$TempDir\Sysmon.zip"
@@ -58,9 +98,6 @@ $SysmonConfigPath = "$TempDir\sysmon-config.xml"
 $BucketName = "fp-lab-corpora-${account_suffix}"
 $S3ConfigKey = "config/sysmon-config.xml"
 $AwsRegion  = "us-east-1"
-$MetadataTokenUri = "http://169.254.169.254/latest/api/token"
-$MetadataToken = (Invoke-RestMethod -Method PUT -Uri $MetadataTokenUri `
-    -Headers @{"X-aws-ec2-metadata-token-ttl-seconds"="21600"})
 $IdentityDoc = Invoke-RestMethod `
     -Uri "http://169.254.169.254/latest/dynamic/instance-identity/document" `
     -Headers @{"X-aws-ec2-metadata-token"=$MetadataToken}
@@ -99,6 +136,21 @@ Start-Process msiexec.exe -Wait -ArgumentList @(
 
 $UFHome = "C:\Program Files\SplunkUniversalForwarder"
 
+# The UF service runs as NT SERVICE\SplunkForwarder, which lacks read access
+# to third-party event log channels (e.g. Sysmon).  Add the service account to
+# the built-in Event Log Readers group so it can subscribe.
+Add-LocalGroupMember -Group "Event Log Readers" -Member "NT SERVICE\SplunkForwarder" -ErrorAction SilentlyContinue
+
+# Resolve the live indexer tailnet IP before writing the forwarder config
+$IndexerIp = Get-IndexerTailnetIp
+if (-not $IndexerIp) {
+    # Discovery can fail when the endpoint hasn't yet been approved on the
+    # tailnet.  Fall back to the known MagicDNS hostname passed from Terraform
+    # (always resolves to the live indexer).
+    Write-Warning "Could not discover live indexer via tailscale; falling back to MagicDNS name '${indexer_tailnet_hostname}'."
+    $IndexerIp = "${indexer_tailnet_hostname}"
+}
+
 # Persistent disk queue so events survive indexer downtime
 @"
 [tcpout]
@@ -106,7 +158,7 @@ defaultGroup = fp_splunk_indexer
 persistentQueueSize = 512MB
 
 [tcpout:fp_splunk_indexer]
-server = fp-splunk:9997
+server = $${IndexerIp}:9997
 compressed = true
 "@ | Set-Content "$UFHome\etc\system\local\outputs.conf"
 
@@ -122,27 +174,33 @@ renderXml = false
 & "$UFHome\bin\splunk.exe" enable boot-start
 
 # ---- GHOSTS standalone client ----
-$GhostsDir = "C:\GHOSTS"
 New-Item -ItemType Directory -Force -Path $GhostsDir | Out-Null
 
-# Download GHOSTS client from GitHub releases (update tag as needed)
-$GhostsTag     = "v8.2.0"
-$GhostsZipUrl  = "https://github.com/cmu-sei/GHOSTS/releases/download/$GhostsTag/ghosts-client-windows-$GhostsTag.zip"
-$GhostsZip     = "$TempDir\ghosts-client.zip"
+$GhostsZip = "$TempDir\ghosts-client.zip"
 Invoke-WebRequest -Uri $GhostsZipUrl -OutFile $GhostsZip -UseBasicParsing
 Expand-Archive -Path $GhostsZip -DestinationPath $GhostsDir -Force
 
-# Copy timeline from S3 (uploaded by Terraform from files/ghosts-timeline.json)
-$TimelineDest = "$GhostsDir\config\timeline.json"
-New-Item -ItemType Directory -Force -Path "$GhostsDir\config" | Out-Null
-aws s3 cp "s3://$BucketName/config/ghosts-timeline-$Profile.json" $TimelineDest --region $AwsRegion
+# Copy profile timeline from S3 (overwrites the stock GHOSTS timeline)
+New-Item -ItemType Directory -Force -Path "$GhostsDir\x64\config" | Out-Null
+aws s3 cp "s3://$BucketName/config/ghosts-timeline-$Profile.json" $GhostsTimeline --region $AwsRegion
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Timeline download from S3 failed; GHOSTS will run its stock sample timeline."
+}
 
-# Register GHOSTS as a scheduled task that runs at startup
-$Action  = New-ScheduledTaskAction -Execute "$GhostsDir\ghosts.exe"
+# Register GHOSTS as a scheduled task that runs at startup.
+# Run as SYSTEM (LogonType ServiceAccount) so start-at-boot works without
+# stored credentials, and launch from the install dir with the config path so
+# GHOSTS finds its config/timeline. ExecutionTimeLimit=0 = run indefinitely.
+$Action  = New-ScheduledTaskAction -Execute $GhostsExe `
+    -Argument "--config=$GhostsDir\x64\config\application.json" `
+    -WorkingDirectory "$GhostsDir\x64"
 $Trigger = New-ScheduledTaskTrigger -AtStartup
-$Settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5)
+$Settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5) `
+    -ExecutionTimeLimit ([TimeSpan]::Zero)
+$Principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" `
+    -LogonType ServiceAccount -RunLevel Highest
 Register-ScheduledTask -TaskName "GHOSTS" -Action $Action -Trigger $Trigger `
-    -RunLevel Highest -Settings $Settings -Force
+    -Settings $Settings -Principal $Principal -Force
 
 Start-ScheduledTask -TaskName "GHOSTS"
 

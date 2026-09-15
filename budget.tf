@@ -1,7 +1,7 @@
 resource "aws_budgets_budget" "fp_lab_monthly" {
   name         = "fp-lab-monthly"
   budget_type  = "COST"
-  limit_amount = "200"
+  limit_amount = "150"
   limit_unit   = "USD"
   time_unit    = "MONTHLY"
 

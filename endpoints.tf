@@ -43,6 +43,9 @@ resource "aws_instance" "windows_endpoint" {
     splunk_hec_token       = var.splunk_hec_token
     account_suffix         = local.account_suffix
     windows_admin_password = var.windows_admin_password
+    # MagicDNS hostname of the live indexer (indexer is created first in this
+    # module, so its instance ID is known when the endpoint user data renders).
+    indexer_tailnet_hostname = "fp-splunk-${substr(aws_instance.splunk_indexer.id, 2, 6)}"
   })
 
   user_data_replace_on_change = false
