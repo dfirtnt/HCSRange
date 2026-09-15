@@ -17,7 +17,7 @@ Budget alert fires at 50% and 75% of $150/mo (hard ceiling).
 ## Prerequisites
 
 1. **AWS credentials** — `aws configure sso`, note the profile name.
-2. **Tailscale** — create tag `tag:fp-lab` in admin console ACLs; add `"autoApprovers": {"registers": ["tag:fp-lab"]}` to the policy so tagged nodes self-approve (avoids per-rebuild console approval); mint a reusable auth key scoped to that tag (90-day).
+2. **Tailscale** — create tag `tag:fp-lab` in admin console ACLs (Tag owners). The policy already grants `tag:fp-lab ⇄ tag:fp-lab` and `autogroup:member → tag:fp-lab`. Mint a reusable auth key tagged `tag:fp-lab` with **Pre-approved** enabled (Keys → Generate auth key → Pre-approved) so tagged nodes self-approve on rebuild and avoid per-rebuild console approval.
 3. **Splunk** — choose an admin password and a HEC token (any UUID).
 4. **tfvars** — create `terraform.auto.tfvars` (gitignored):
 
