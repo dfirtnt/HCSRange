@@ -53,6 +53,23 @@ resource "aws_s3_object" "ghosts_timeline_server" {
   etag   = filemd5("${path.module}/files/ghosts-timeline-server.json")
 }
 
+# Vendored agent MSIs pulled from the downloads folder. These embed the
+# registration credentials (Action1 customer ID + client cert/key;
+# Velociraptor server URL + CA + nonce), so no separate tokens are needed.
+resource "aws_s3_object" "action1_agent" {
+  bucket      = aws_s3_bucket.corpus.id
+  key         = "software/action1_agent.msi"
+  source      = "${path.module}/files/action1_agent.msi"
+  source_hash = filebase64sha256("${path.module}/files/action1_agent.msi")
+}
+
+resource "aws_s3_object" "velociraptor_client" {
+  bucket      = aws_s3_bucket.corpus.id
+  key         = "software/velociraptor-personal-2026-09-08.msi"
+  source      = "${path.module}/files/velociraptor-personal-2026-09-08.msi"
+  source_hash = filebase64sha256("${path.module}/files/velociraptor-personal-2026-09-08.msi")
+}
+
 resource "aws_s3_bucket_lifecycle_configuration" "corpus" {
   bucket = aws_s3_bucket.corpus.id
 

@@ -41,6 +41,16 @@ windows_admin_password = "YourWindowsPassword!"
    Merge-AllSysmonXml -Path .\* -AsString | Out-File ../infra/fp-lab/files/sysmon-config.xml
    ```
 
+8. **Agent MSIs** — the endpoint bootstrap installs the Action1 and Velociraptor agents from
+   `files/`. These MSIs embed their registration credentials, so they must be
+   downloaded from your org's console and placed in `files/`:
+   - `files/action1_agent.msi` — download from the Action1 endpoint-management console.
+   - `files/velociraptor-personal-2026-09-08.msi` — download from your Velociraptor
+     server's frontend (client installer with embedded server URL + enrollment config).
+   Refresh these whenever you re-mint/redeploy the agents; Terraform re-uploads them to
+   S3 (`software/` prefix) and `/qn` installs them on every Windows endpoint during
+   bootstrap.
+
 ## Apply
 
 ```bash
@@ -63,6 +73,11 @@ curl -k https://$(terraform output -raw splunk_rest_url | sed 's#https://##')/se
 
 # Sysmon events flowing (run ~30 min after endpoint boot)
 # In Splunk: index=fp_lab_wineventlog EventCode=1 | head 10
+
+# Agents enrolled
+# Action1 console should list fp-wkstn-01 and fp-srv-01 as online;
+# Velociraptor server GUI -> Clients should show two fleets joined.
+# Diagnostic check on the endpoints: Get-Service A1Agent, Velociraptor
 
 # Security check — all ports filtered from outside tailnet
 nmap -Pn <indexer-public-ip>

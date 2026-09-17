@@ -204,6 +204,38 @@ Register-ScheduledTask -TaskName "GHOSTS" -Action $Action -Trigger $Trigger `
 
 Start-ScheduledTask -TaskName "GHOSTS"
 
+# ---- Action1 agent ----
+# MSI embeds the org customer ID + client cert/key, so a silent install is
+# all that's needed to register with the Action1 cloud.
+$Action1Msi = "$TempDir\action1_agent.msi"
+aws s3 cp "s3://$BucketName/software/action1_agent.msi" $Action1Msi --region $AwsRegion
+if ($LASTEXITCODE -eq 0) {
+    $a1p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$Action1Msi`" /qn /norestart"
+    if ($a1p.ExitCode -eq 0) {
+        Write-Output "Action1 agent installed"
+    } else {
+        Write-Warning "Action1 agent install exited $($a1p.ExitCode)"
+    }
+} else {
+    Write-Warning "Action1 MSI download from S3 failed; skipping agent install."
+}
+
+# ---- Velociraptor client ----
+# MSI embeds the server URL, CA cert, and enrollment nonce in client.config.yaml,
+# and registers the client as a LocalSystem service.
+$VelociraptorMsi = "$TempDir\velociraptor-personal-2026-09-08.msi"
+aws s3 cp "s3://$BucketName/software/velociraptor-personal-2026-09-08.msi" $VelociraptorMsi --region $AwsRegion
+if ($LASTEXITCODE -eq 0) {
+    $vp = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$VelociraptorMsi`" /qn /norestart"
+    if ($vp.ExitCode -eq 0) {
+        Write-Output "Velociraptor client installed"
+    } else {
+        Write-Warning "Velociraptor client install exited $($vp.ExitCode)"
+    }
+} else {
+    Write-Warning "Velociraptor MSI download from S3 failed; skipping agent install."
+}
+
 # ---- Cleanup ----
 Remove-Item -Recurse -Force $TempDir
 
