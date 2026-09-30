@@ -30,9 +30,9 @@ alert_email            = "you@example.com"
 windows_admin_password = "YourWindowsPassword!"
 ```
 
-5. **Splunk SHA512** — before applying, get the aarch64 .deb SHA512 from the [Splunk download page](https://www.splunk.com/en_us/download/splunk-enterprise.html) and update `SPLUNK_SHA512` in `userdata/splunk_indexer.sh.tftpl`.
+5. **Splunk hash (indexer)** — `SPLUNK_SHA512` in `userdata/splunk_indexer.sh.tftpl` is the SHA512 of the pinned x86_64 `.tgz`; the bootstrap verifies the download before extracting. Only update it if you bump `SPLUNK_VERSION`/`SPLUNK_BUILD`.
 
-6. **Splunk UF SHA256 + Sysmon SHA256** — similarly update the hash placeholders in `userdata/windows_endpoint.ps1.tftpl`.
+6. **Splunk UF hash + Sysmon signature (Windows)** — `$SplunkUFMsiSha256` in `userdata/windows_endpoint.ps1.tftpl` is the SHA256 of the pinned UF installer and is verified before install; bump it with `$SplunkUFVersion`/`$SplunkUFBuild`. Sysmon's download URL floats ("latest"), so it is verified by Microsoft **Authenticode signature** (not a hash) before execution.
 
 7. **sysmon-config.xml** — the vendored config in `files/sysmon-config.xml` is a baseline. To regenerate from sysmon-modular:
    ```

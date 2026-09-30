@@ -34,6 +34,12 @@ resource "aws_ebs_volume" "splunk_data" {
   size              = 60
   type              = "gp3"
 
+  # Guard the index data: `terraform destroy` (and any replace of this volume)
+  # will fail until this block is removed. See README "Destroy".
+  lifecycle {
+    prevent_destroy = true
+  }
+
   tags = merge(local.common_tags, { Name = "fp-splunk-data" })
 }
 

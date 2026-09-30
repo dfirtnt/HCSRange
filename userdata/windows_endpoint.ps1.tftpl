@@ -17,6 +17,8 @@ $SysmonUrl        = "https://download.sysinternals.com/files/Sysmon.zip"
 $SplunkUFVersion  = "10.4.3"
 $SplunkUFBuild    = "4174a2deda5d"
 $SplunkUFUrl      = "https://download.splunk.com/products/universalforwarder/releases/$SplunkUFVersion/windows/splunkforwarder-$SplunkUFVersion-$SplunkUFBuild-windows-x64.msi"
+# SHA256 of the pinned UF installer. Bump together with $SplunkUFVersion/$SplunkUFBuild.
+$SplunkUFMsiSha256 = "177DA3CADACC644772DC51A77747A21B56BA763B1F379B8FFCA91F0D51CAC0C3"
 
 $GhostsTag      = "v9.0.0"
 $GhostsZipUrl   = "https://github.com/cmu-sei/GHOSTS/releases/download/$GhostsTag/ghosts-client-windows-x64.zip"
@@ -93,6 +95,14 @@ Invoke-WebRequest -Uri $SysmonUrl -OutFile $SysmonZip -UseBasicParsing
 $SysmonDir = "$TempDir\Sysmon"
 Expand-Archive -Path $SysmonZip -DestinationPath $SysmonDir -Force
 
+# Verify the Sysmon binary is Authenticode-signed by Microsoft before executing
+# it. The download URL floats ("latest"), so a static hash would break on every
+# Sysinternals release; the signature is stable and is the stronger check.
+$SysmonSig = Get-AuthenticodeSignature "$SysmonDir\Sysmon64.exe"
+if ($SysmonSig.Status -ne "Valid" -or $SysmonSig.SignerCertificate.Subject -notlike "*O=Microsoft Corporation*") {
+    throw "Sysmon Authenticode verification failed (status=$($SysmonSig.Status))."
+}
+
 # Download sysmon-modular merged config from S3 corpus bucket (instance IAM role)
 $SysmonConfigPath = "$TempDir\sysmon-config.xml"
 $BucketName = "fp-lab-corpora-${account_suffix}"
@@ -126,6 +136,12 @@ aws s3 cp "s3://$BucketName/$S3ConfigKey" $SysmonConfigPath --region $AwsRegion
 # ---- Splunk Universal Forwarder ----
 $SplunkUFMsi = "$TempDir\splunkforwarder.msi"
 Invoke-WebRequest -Uri $SplunkUFUrl -OutFile $SplunkUFMsi -UseBasicParsing
+
+# Fail closed on mismatch before attempting to install the package.
+$UfHash = (Get-FileHash -Path $SplunkUFMsi -Algorithm SHA256).Hash
+if ($UfHash -ne $SplunkUFMsiSha256) {
+    throw "Splunk UF MSI SHA256 mismatch (expected $SplunkUFMsiSha256, got $UfHash)."
+}
 
 Start-Process msiexec.exe -Wait -ArgumentList @(
     "/i", "`"$SplunkUFMsi`"",

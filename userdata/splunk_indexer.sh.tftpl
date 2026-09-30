@@ -11,6 +11,9 @@ SPLUNK_HEC_TOKEN="${splunk_hec_token}"
 # URLs on download.splunk.com return 404).
 SPLUNK_VERSION="10.4.3"
 SPLUNK_BUILD="4174a2deda5d"
+# SHA512 of the pinned archive. Bump together with SPLUNK_VERSION/SPLUNK_BUILD;
+# grab it from the Splunk download page (or `sha512sum` the published file).
+SPLUNK_SHA512="bc034266da63bc045a38c8fbda59ad2196b405abad20e217100d6cdfc20316ff17dddb37cde875f62557fee0948554e5d93650ffec5b5b7daebc9d09ed5931e3"
 SPLUNK_TGZ="splunk-$${SPLUNK_VERSION}-$${SPLUNK_BUILD}-linux-amd64.tgz"
 SPLUNK_URL="https://download.splunk.com/products/splunk/releases/$${SPLUNK_VERSION}/linux/$${SPLUNK_TGZ}"
 
@@ -76,6 +79,8 @@ for i in 1 2 3 4 5; do up && break; sleep 5; done
 # ---- Download and verify Splunk ----
 cd /tmp
 wget -q -O "$${SPLUNK_TGZ}" "$${SPLUNK_URL}"
+# Fail the bootstrap (set -e) on any mismatch rather than extracting a bad archive.
+echo "$${SPLUNK_SHA512}  $${SPLUNK_TGZ}" | sha512sum -c -
 tar -xzf "$${SPLUNK_TGZ}" -C /opt
 rm -f "$${SPLUNK_TGZ}"
 
